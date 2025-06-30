@@ -60,7 +60,7 @@ mypy-report/
 mypy-out/
 
 # Poetry
-poetry.lock
+# poetry.lock
 
 # Environments
 .env
