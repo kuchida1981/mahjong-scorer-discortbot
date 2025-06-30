@@ -1,0 +1,109 @@
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+.pytest_cache/
+.venv
+venv
+dist/
+build/
+eggs/
+.egg-info/
+*.egg
+
+# Byte-compiled / optimized / DLL files
+__pycache__
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/wheels/
+*.egg-info/
+.installed.cfg
+*.whl
+MANIFEST
+
+# PyInstaller
+#  Usually these files are written into a dist/ directory.
+#  Assuming a top-level dist/ directory (and not one located in a subdirectory)
+/#  Uncomment if that's the case.
+#dist/
+
+# Spyder project
+.spyderproject
+.spyproject
+
+# Rope project
+.ropeproject
+
+# mypy
+.mypy_cache/
+mypy-report/
+mypy-out/
+
+# Poetry
+poetry.lock
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*~
+*.bak
+*.tmp
+
+# Logs
+*.log
+
+# Coverage data
+.coverage
+coverage.xml
+.cache
+
+# Other
+__pycache__/
+*.orig
+*.rej
+
+# Optional: Exclude files that are only useful for development
+# Add them back if you need them for deployment
+# .env.example
+# .env.template
+
+# Ignore compiled modules from Cython
+*.c
+*.cpp
+
+# pytype static type analyzer
+.pytype/
