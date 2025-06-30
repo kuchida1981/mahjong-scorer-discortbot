@@ -1,9 +1,11 @@
 import json
 import os
-from typing import Any, Dict, Tuple
+from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
 
 import discord
 from discord.ext import commands
+from discord.ui import Button, View
 
 # 環境変数からDiscordボットのトークンを取得
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
@@ -11,6 +13,7 @@ DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 # プレフィックスなしでスラッシュコマンドを使用
 intents = discord.Intents.default()
 intents.message_content = True  # メッセージの内容を読み取るためのインテントを有効にする
+intents.members = True  # メンバー情報を取得するためのインテントを有効にする
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("!"), intents=intents)
 
 # データの保存先ファイル
@@ -41,12 +44,56 @@ def save_gamesets(gamesets: Dict[str, Any]) -> None:
         json.dump(gamesets, f, ensure_ascii=False, indent=4)
 
 
+# プレイヤー名からDiscordのメンション文字列を取得するヘルパー関数
+async def get_mention_from_player_name(
+    interaction: discord.Interaction, player_name: str
+) -> str:
+    """プレイヤー名からDiscordのメンション文字列を取得する"""
+    if interaction.guild:
+        # ニックネームまたはユーザー名でメンバーを検索
+        for member in interaction.guild.members:
+            if member.nick == player_name or member.name == player_name:
+                return member.mention
+    return player_name  # 見つからない場合は元のプレイヤー名を返す
+
+
 # 現在進行中のゲームセットを管理する辞書
 # { guild_id: { channel_id: { "status": "active", "games": [], "members": {} } } }
 current_gamesets = load_gamesets()
 
 
-async def _start_gameset_logic(guild_id: str, channel_id: str) -> Tuple[bool, str]:
+class ConfirmStartGamesetView(View):  # pragma: no cover
+    def __init__(self, guild_id: str, channel_id: str):
+        super().__init__(timeout=60)  # 60秒でタイムアウト
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.value: Optional[bool] = None  # ユーザーの選択 (True: はい, False: いいえ)
+
+    @discord.ui.button(label="はい", style=discord.ButtonStyle.green)
+    async def confirm(
+        self, interaction: discord.Interaction, button: Button
+    ):  # pragma: no cover
+        self.value = True
+        self.stop()
+        await interaction.response.edit_message(
+            content="既存のゲームセットを破棄し、新しいゲームセットを開始します。",
+            view=None,
+        )
+
+    @discord.ui.button(label="いいえ", style=discord.ButtonStyle.red)
+    async def cancel(
+        self, interaction: discord.Interaction, button: Button
+    ):  # pragma: no cover
+        self.value = False
+        self.stop()
+        await interaction.response.edit_message(
+            content="新しいゲームセットの開始をキャンセルしました。", view=None
+        )
+
+
+async def _start_gameset_logic(
+    guild_id: str, channel_id: str, interaction: discord.Interaction
+) -> Tuple[bool, str]:
     """ゲームセット開始のロジック"""
     if guild_id not in current_gamesets:
         current_gamesets[guild_id] = {}
@@ -55,7 +102,36 @@ async def _start_gameset_logic(guild_id: str, channel_id: str) -> Tuple[bool, st
         channel_id in current_gamesets[guild_id]
         and current_gamesets[guild_id][channel_id]["status"] == "active"
     ):
-        return False, "すでにこのチャンネルでゲームセットが進行中です。"
+        # 確認ダイアログを表示
+        view = ConfirmStartGamesetView(guild_id, channel_id)
+        await interaction.response.send_message(
+            "すでにこのチャンネルでゲームセットが進行中です。現在のゲームセットを破棄して、新しいゲームセットを開始しますか？",
+            view=view,
+            ephemeral=True,
+        )
+        await view.wait()  # ユーザーの応答を待つ
+
+        if view.value is True:
+            # 既存のゲームセットを破棄
+            current_gamesets[guild_id][channel_id] = {
+                "status": "inactive",
+                "games": [],
+                "members": {},
+            }
+            save_gamesets(current_gamesets)
+            # 新しいゲームセットを開始
+            current_gamesets[guild_id][channel_id] = {
+                "status": "active",
+                "games": [],
+                "members": {},
+            }
+            save_gamesets(current_gamesets)
+            return (
+                True,
+                "既存のゲームセットを破棄し、新しい麻雀のスコア集計を開始します。`/record_game` でゲーム結果を入力してください。",
+            )
+        else:
+            return False, "新しいゲームセットの開始をキャンセルしました。"
 
     current_gamesets[guild_id][channel_id] = {
         "status": "active",
@@ -70,7 +146,12 @@ async def _start_gameset_logic(guild_id: str, channel_id: str) -> Tuple[bool, st
 
 
 async def _record_game_logic(
-    guild_id: str, channel_id: str, rule: str, players_count: int, scores_str: str
+    guild_id: str,
+    channel_id: str,
+    rule: str,
+    players_count: int,
+    scores_str: str,
+    interaction: discord.Interaction,
 ) -> Tuple[bool, str]:
     """ゲーム結果記録のロジック"""
     if (
@@ -158,12 +239,15 @@ async def _record_game_logic(
     result_parts = []
     for i, (player, score) in enumerate(sorted_game_scores):
         rank = i + 1
-        result_parts.append(f"@{player}: {score} ({rank}着)")
+        mention = await get_mention_from_player_name(interaction, player)
+        result_parts.append(f"{mention}: {score} ({rank}着)")
 
     return True, "ゲーム結果を記録しました。\n" + ", ".join(result_parts)
 
 
-async def _current_scores_logic(guild_id: str, channel_id: str) -> Tuple[bool, str]:
+async def _current_scores_logic(
+    guild_id: str, channel_id: str, interaction: discord.Interaction
+) -> Tuple[bool, str]:
     """現在のトータルスコアと順位を出力するロジック"""
     if (
         guild_id not in current_gamesets
@@ -187,12 +271,15 @@ async def _current_scores_logic(guild_id: str, channel_id: str) -> Tuple[bool, s
     result_message = "## 現在のトータルスコア\n"
     for i, (player, score) in enumerate(sorted_scores):
         rank = i + 1
-        result_message += f"- {player}: {score} ({rank}位)\n"
+        mention = await get_mention_from_player_name(interaction, player)
+        result_message += f"- {mention}: {score} ({rank}位)\n"
 
     return True, result_message
 
 
-async def _end_gameset_logic(guild_id: str, channel_id: str) -> Tuple[bool, str]:
+async def _end_gameset_logic(
+    guild_id: str, channel_id: str, interaction: discord.Interaction
+) -> Tuple[bool, str]:
     """ゲームセット完了のロジック"""
     if (
         guild_id not in current_gamesets
@@ -204,19 +291,43 @@ async def _end_gameset_logic(guild_id: str, channel_id: str) -> Tuple[bool, str]
     gameset_data = current_gamesets[guild_id][channel_id]
     total_scores = gameset_data["members"]
 
+    # ゲーム記録がない場合、メッセージを返さずにゲームセットを閉じる
     if not total_scores:
-        return False, "記録されたゲームがありません。"
+        current_gamesets[guild_id][channel_id]["status"] = "inactive"
+        save_gamesets(current_gamesets)
+        # current_gamesetsもクリアする
+        current_gamesets[guild_id][channel_id] = {
+            "status": "inactive",
+            "games": [],
+            "members": {},
+        }
+        return True, "ゲームセットを閉じました。記録されたゲームはありませんでした。"
 
     # スコアを降順にソート
     sorted_scores = sorted(total_scores.items(), key=lambda item: item[1], reverse=True)
 
     result_message = "## 麻雀ゲームセット結果\n"
     for player, score in sorted_scores:
-        result_message += f"- {player}: {score}\n"
+        mention = await get_mention_from_player_name(interaction, player)
+        result_message += f"- {mention}: {score}\n"
 
     # ゲームセットを非アクティブにする
     current_gamesets[guild_id][channel_id]["status"] = "inactive"
     save_gamesets(current_gamesets)
+
+    # ファイルをリネーム
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    new_file_name = f"gamesets.{timestamp}.json"
+    if os.path.exists(DATA_FILE):
+        os.rename(DATA_FILE, new_file_name)
+        # リネーム後、gamesets.jsonを空にする
+        save_gamesets({})
+        # current_gamesetsもクリアする
+        current_gamesets[guild_id][channel_id] = {
+            "status": "inactive",
+            "games": [],
+            "members": {},
+        }
 
     return True, result_message
 
@@ -229,7 +340,7 @@ async def start_gameset(interaction: discord.Interaction):  # pragma: no cover
     guild_id = str(interaction.guild_id)  # pragma: no cover
     channel_id = str(interaction.channel_id)  # pragma: no cover
     success, message = await _start_gameset_logic(
-        guild_id, channel_id
+        guild_id, channel_id, interaction
     )  # pragma: no cover
     await interaction.response.send_message(
         message, ephemeral=not success
@@ -254,7 +365,7 @@ async def record_game(  # pragma: no cover
     guild_id = str(interaction.guild_id)  # pragma: no cover
     channel_id = str(interaction.channel_id)  # pragma: no cover
     success, message = await _record_game_logic(
-        guild_id, channel_id, rule, players, scores
+        guild_id, channel_id, rule, players, scores, interaction
     )  # pragma: no cover
     await interaction.response.send_message(
         message, ephemeral=not success
@@ -270,7 +381,7 @@ async def end_gameset(interaction: discord.Interaction):  # pragma: no cover
     guild_id = str(interaction.guild_id)  # pragma: no cover
     channel_id = str(interaction.channel_id)  # pragma: no cover
     success, message = await _end_gameset_logic(
-        guild_id, channel_id
+        guild_id, channel_id, interaction
     )  # pragma: no cover
     await interaction.response.send_message(
         message, ephemeral=not success
@@ -285,7 +396,7 @@ async def current_scores(interaction: discord.Interaction):  # pragma: no cover
     guild_id = str(interaction.guild_id)  # pragma: no cover
     channel_id = str(interaction.channel_id)  # pragma: no cover
     success, message = await _current_scores_logic(
-        guild_id, channel_id
+        guild_id, channel_id, interaction
     )  # pragma: no cover
     await interaction.response.send_message(
         message, ephemeral=not success

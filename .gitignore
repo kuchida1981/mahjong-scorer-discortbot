@@ -107,3 +107,6 @@ __pycache__/
 
 # pytype static type analyzer
 .pytype/
+
+# others
+gamesets*.json
