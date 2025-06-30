@@ -16,3 +16,6 @@ ruff, isort, black, mypy をインストールしてあります.
 
 パッケージ追加が必要なときには, `poetry add` コマンドを使ってください.
 pyproject.toml を直接編集しないでください.
+
+実装に必要とされるパッケージは `poetry add` コマンドを使い,
+実装に必要とはいえない例えばテスト関連のツールなどは `poetry add --group dev` コマンドを使って導入してください
