@@ -31,8 +31,8 @@ def setup_teardown():
             mock_member_player1 = AsyncMock()
             mock_member_player1.nick = "player1"
             mock_member_player1.name = "player1"
-            mock_member_player1.mention = "<@111111111111111111>" # 適当なID
-            
+            mock_member_player1.mention = "<@111111111111111111>"  # 適当なID
+
             mock_member_player2 = AsyncMock()
             mock_member_player2.nick = "player2"
             mock_member_player2.name = "player2"
@@ -96,7 +96,7 @@ def setup_teardown():
                 mock_member_p3,
                 mock_member_p4,
             ]
-            
+
             # yield にモックを渡す
             yield mock_interaction
             # テスト終了後に current_gamesets を再度クリアして次のテストに影響を与えないようにする
@@ -110,35 +110,39 @@ def setup_teardown():
 
 @pytest.mark.asyncio
 async def test_start_gameset_logic(setup_teardown):
-    from app.main import _start_gameset_logic, current_gamesets, ConfirmStartGamesetView
+    from app.main import _start_gameset_logic, current_gamesets
 
     guild_id = "123"
     channel_id = "456"
     mock_interaction = setup_teardown
 
     # 新規ゲームセット開始のテスト
-    success, message = await _start_gameset_logic(guild_id, channel_id, mock_interaction)
+    success, message = await _start_gameset_logic(
+        guild_id, channel_id, mock_interaction
+    )
     assert success is True
     assert (
         message
-        == "麻雀のスコア集計を開始します。`/record_game` でゲーム結果を入力してください。"
+        == "麻雀のスコア集計を開始します。`/mj_record` でゲーム結果を入力してください。"
     )
     assert current_gamesets[guild_id][channel_id]["status"] == "active"
     assert current_gamesets[guild_id][channel_id]["games"] == []
     assert current_gamesets[guild_id][channel_id]["members"] == {}
 
     # 既に進行中のゲームセットがある場合のテスト (確認ダイアログで「はい」を選択)
-    mock_interaction.response.send_message.reset_mock() # モックをリセット
-    mock_interaction.response.edit_message.reset_mock() # モックをリセット
+    mock_interaction.response.send_message.reset_mock()  # モックをリセット
+    mock_interaction.response.edit_message.reset_mock()  # モックをリセット
 
     # ConfirmStartGamesetView のインスタンスをモックし、value を True に設定
     with patch("app.main.ConfirmStartGamesetView", autospec=True) as MockView:
         mock_view_instance = MockView.return_value
-        mock_view_instance.value = True # 「はい」を選択したと仮定
-        mock_view_instance.wait = AsyncMock() # wait メソッドをモック
+        mock_view_instance.value = True  # 「はい」を選択したと仮定
+        mock_view_instance.wait = AsyncMock()  # wait メソッドをモック
 
-        success, message = await _start_gameset_logic(guild_id, channel_id, mock_interaction)
-        
+        success, message = await _start_gameset_logic(
+            guild_id, channel_id, mock_interaction
+        )
+
         MockView.assert_called_once_with(guild_id, channel_id)
         mock_interaction.response.send_message.assert_called_once_with(
             "すでにこのチャンネルでゲームセットが進行中です。現在のゲームセットを破棄して、新しいゲームセットを開始しますか？",
@@ -147,22 +151,27 @@ async def test_start_gameset_logic(setup_teardown):
         )
         mock_view_instance.wait.assert_called_once()
         assert success is True
-        assert message == "既存のゲームセットを破棄し、新しい麻雀のスコア集計を開始します。`/record_game` でゲーム結果を入力してください。"
+        assert (
+            message
+            == "既存のゲームセットを破棄し、新しい麻雀のスコア集計を開始します。`/mj_record` でゲーム結果を入力してください。"
+        )
         assert current_gamesets[guild_id][channel_id]["status"] == "active"
         assert current_gamesets[guild_id][channel_id]["games"] == []
         assert current_gamesets[guild_id][channel_id]["members"] == {}
 
     # 既に進行中のゲームセットがある場合のテスト (確認ダイアログで「いいえ」を選択)
-    mock_interaction.response.send_message.reset_mock() # モックをリセット
-    mock_interaction.response.edit_message.reset_mock() # モックをリセット
+    mock_interaction.response.send_message.reset_mock()  # モックをリセット
+    mock_interaction.response.edit_message.reset_mock()  # モックをリセット
 
     with patch("app.main.ConfirmStartGamesetView", autospec=True) as MockView:
         mock_view_instance = MockView.return_value
-        mock_view_instance.value = False # 「いいえ」を選択したと仮定
-        mock_view_instance.wait = AsyncMock() # wait メソッドをモック
+        mock_view_instance.value = False  # 「いいえ」を選択したと仮定
+        mock_view_instance.wait = AsyncMock()  # wait メソッドをモック
 
-        success, message = await _start_gameset_logic(guild_id, channel_id, mock_interaction)
-        
+        success, message = await _start_gameset_logic(
+            guild_id, channel_id, mock_interaction
+        )
+
         MockView.assert_called_once_with(guild_id, channel_id)
         mock_interaction.response.send_message.assert_called_once_with(
             "すでにこのチャンネルでゲームセットが進行中です。現在のゲームセットを破棄して、新しいゲームセットを開始しますか？",
@@ -172,7 +181,9 @@ async def test_start_gameset_logic(setup_teardown):
         mock_view_instance.wait.assert_called_once()
         assert success is False
         assert message == "新しいゲームセットの開始をキャンセルしました。"
-        assert current_gamesets[guild_id][channel_id]["status"] == "active" # キャンセルなので状態は変わらない
+        assert (
+            current_gamesets[guild_id][channel_id]["status"] == "active"
+        )  # キャンセルなので状態は変わらない
 
 
 @pytest.mark.asyncio
@@ -260,7 +271,7 @@ async def test_record_game_logic_validation_errors(setup_teardown):
     assert success is False
     assert (
         message
-        == "このチャンネルで進行中のゲームセットがありません。`/start_gameset` で開始してください。"
+        == "このチャンネルで進行中のゲームセットがありません。`/mj_start` で開始してください。"
     )
 
     await _start_gameset_logic(guild_id, channel_id, mock_interaction)
@@ -382,7 +393,9 @@ async def test_end_gameset_logic(setup_teardown):
     mock_interaction = setup_teardown
 
     # ゲームセットが開始されていない場合
-    success, message = await _end_gameset_logic(guild_id, channel_id, interaction=mock_interaction)
+    success, message = await _end_gameset_logic(
+        guild_id, channel_id, interaction=mock_interaction
+    )
     assert success is False
     assert message == "このチャンネルで進行中のゲームセットがありません。"
 
@@ -409,7 +422,9 @@ async def test_end_gameset_logic(setup_teardown):
     )
 
     # ゲームセットを終了
-    success, message = await _end_gameset_logic(guild_id, channel_id, interaction=mock_interaction)
+    success, message = await _end_gameset_logic(
+        guild_id, channel_id, interaction=mock_interaction
+    )
     assert success is True
     expected_message = (
         "## 麻雀ゲームセット結果\n"
@@ -427,7 +442,9 @@ async def test_end_gameset_logic(setup_teardown):
         "games": [],
         "members": {},
     }
-    success, message = await _end_gameset_logic(guild_id, channel_id, interaction=mock_interaction)
+    success, message = await _end_gameset_logic(
+        guild_id, channel_id, interaction=mock_interaction
+    )
     assert success is True
     assert message == "ゲームセットを閉じました。記録されたゲームはありませんでした。"
     assert current_gamesets[guild_id][channel_id]["status"] == "inactive"

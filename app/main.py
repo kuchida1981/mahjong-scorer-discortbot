@@ -161,7 +161,7 @@ async def _record_game_logic(
     ):
         return (
             False,
-            "このチャンネルで進行中のゲームセットがありません。`/start_gameset` で開始してください。",
+            "このチャンネルで進行中のゲームセットがありません。`/mj_start` で開始してください。",
         )
 
     # ルールのバリデーション
@@ -256,7 +256,7 @@ async def _current_scores_logic(
     ):
         return (
             False,
-            "このチャンネルで進行中のゲームセットがありません。`/start_gameset` で開始してください。",
+            "このチャンネルで進行中のゲームセットがありません。`/mj_start` で開始してください。",
         )
 
     gameset_data = current_gamesets[guild_id][channel_id]
@@ -334,9 +334,9 @@ async def _end_gameset_logic(
 
 # ゲームセット開始コマンド
 @bot.tree.command(
-    name="start_gameset", description="麻雀のスコア集計を開始します。"
+    name="mj_start", description="麻雀のスコア集計を開始します。"
 )  # pragma: no cover
-async def start_gameset(interaction: discord.Interaction):  # pragma: no cover
+async def mj_start(interaction: discord.Interaction):  # pragma: no cover
     guild_id = str(interaction.guild_id)  # pragma: no cover
     channel_id = str(interaction.channel_id)  # pragma: no cover
     success, message = await _start_gameset_logic(
@@ -349,14 +349,14 @@ async def start_gameset(interaction: discord.Interaction):  # pragma: no cover
 
 # ゲーム結果記録コマンド
 @bot.tree.command(
-    name="record_game", description="1ゲームの麻雀結果を記録します。"
+    name="mj_record", description="1ゲームの麻雀結果を記録します。"
 )  # pragma: no cover
 @discord.app_commands.describe(  # pragma: no cover
     rule="ゲームのルール (東風戦:tonpu / 半荘戦:hanchan)",  # pragma: no cover
     players="参加人数 (3:サンマ / 4:4人)",  # pragma: no cover
     scores="プレイヤー名とスコアのペアをカンマ区切りで入力してください (例: @player1:25000, @player2:15000, @player3:-10000, @player4:-30000)",  # pragma: no cover
 )
-async def record_game(  # pragma: no cover
+async def mj_record(  # pragma: no cover
     interaction: discord.Interaction,
     rule: str,
     players: int,
@@ -374,10 +374,10 @@ async def record_game(  # pragma: no cover
 
 # ゲームセット完了コマンド
 @bot.tree.command(  # pragma: no cover
-    name="end_gameset",
+    name="mj_end",
     description="麻雀のスコア集計を完了し、結果を出力します。",  # pragma: no cover
 )
-async def end_gameset(interaction: discord.Interaction):  # pragma: no cover
+async def mj_end(interaction: discord.Interaction):  # pragma: no cover
     guild_id = str(interaction.guild_id)  # pragma: no cover
     channel_id = str(interaction.channel_id)  # pragma: no cover
     success, message = await _end_gameset_logic(
@@ -390,9 +390,9 @@ async def end_gameset(interaction: discord.Interaction):  # pragma: no cover
 
 # 現在のスコア表示コマンド
 @bot.tree.command(
-    name="current_scores", description="現在のトータルスコアと順位を表示します。"
+    name="mj_scores", description="現在のトータルスコアと順位を表示します。"
 )  # pragma: no cover
-async def current_scores(interaction: discord.Interaction):  # pragma: no cover
+async def mj_scores(interaction: discord.Interaction):  # pragma: no cover
     guild_id = str(interaction.guild_id)  # pragma: no cover
     channel_id = str(interaction.channel_id)  # pragma: no cover
     success, message = await _current_scores_logic(
