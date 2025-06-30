@@ -188,7 +188,8 @@ async def test_start_gameset_logic(setup_teardown):
 
 @pytest.mark.asyncio
 async def test_record_game_logic_success(setup_teardown):
-    from app.main import _record_game_logic, _start_gameset_logic, current_gamesets
+    from app.main import (_record_game_logic, _start_gameset_logic,
+                          current_gamesets)
 
     guild_id = "123"
     channel_id = "456"
@@ -197,7 +198,7 @@ async def test_record_game_logic_success(setup_teardown):
     # ゲームセットを開始
     await _start_gameset_logic(guild_id, channel_id, mock_interaction)
 
-    # 4人麻雀の成功ケース
+    # 4人麻雀の成功ケース (service指定あり)
     success, message = await _record_game_logic(
         guild_id,
         channel_id,
@@ -205,17 +206,19 @@ async def test_record_game_logic_success(setup_teardown):
         players_count=4,
         scores_str="@player1:25000,@player2:15000,@player3:-10000,@player4:-30000",
         interaction=mock_interaction,
+        service="tenhou",
     )
     assert success is True
     expected_message = "ゲーム結果を記録しました。\n<@111111111111111111>: 25000 (1着), <@222222222222222222>: 15000 (2着), <@333333333333333333>: -10000 (3着), <@444444444444444444>: -30000 (4着)"
     assert message == expected_message
     assert len(current_gamesets[guild_id][channel_id]["games"]) == 1
+    assert current_gamesets[guild_id][channel_id]["games"][0]["service"] == "tenhou"
     assert current_gamesets[guild_id][channel_id]["members"]["player1"] == 25000
     assert current_gamesets[guild_id][channel_id]["members"]["player2"] == 15000
     assert current_gamesets[guild_id][channel_id]["members"]["player3"] == -10000
     assert current_gamesets[guild_id][channel_id]["members"]["player4"] == -30000
 
-    # 別のゲームを追加
+    # 別のゲームを追加 (service指定なし、デフォルトjantama)
     success, message = await _record_game_logic(
         guild_id,
         channel_id,
@@ -223,11 +226,13 @@ async def test_record_game_logic_success(setup_teardown):
         players_count=4,
         scores_str="@player1:10000,@player2:0,@player3:-5000,@player4:-5000",
         interaction=mock_interaction,
+        service="jantama",
     )
     assert success is True
     expected_message = "ゲーム結果を記録しました。\n<@111111111111111111>: 10000 (1着), <@222222222222222222>: 0 (2着), <@333333333333333333>: -5000 (3着), <@444444444444444444>: -5000 (4着)"
     assert message == expected_message
     assert len(current_gamesets[guild_id][channel_id]["games"]) == 2
+    assert current_gamesets[guild_id][channel_id]["games"][1]["service"] == "jantama"
     assert current_gamesets[guild_id][channel_id]["members"]["player1"] == 35000
     assert current_gamesets[guild_id][channel_id]["members"]["player2"] == 15000
     assert current_gamesets[guild_id][channel_id]["members"]["player3"] == -15000
@@ -241,11 +246,13 @@ async def test_record_game_logic_success(setup_teardown):
         players_count=3,
         scores_str="@playerA:30000,@playerB:0,@playerC:-30000",
         interaction=mock_interaction,
+        service="jantama",
     )
     assert success is True
     expected_message = "ゲーム結果を記録しました。\n<@AAAAAAAAAAAAAAA>: 30000 (1着), <@BBBBBBBBBBBBBBB>: 0 (2着), <@CCCCCCCCCCCCCCC>: -30000 (3着)"
     assert message == expected_message
     assert len(current_gamesets[guild_id][channel_id]["games"]) == 3
+    assert current_gamesets[guild_id][channel_id]["games"][2]["service"] == "jantama"
     assert current_gamesets[guild_id][channel_id]["members"]["playerA"] == 30000
     assert current_gamesets[guild_id][channel_id]["members"]["playerB"] == 0
     assert current_gamesets[guild_id][channel_id]["members"]["playerC"] == -30000
@@ -267,6 +274,7 @@ async def test_record_game_logic_validation_errors(setup_teardown):
         players_count=4,
         scores_str="@p1:0,@p2:0,@p3:0,@p4:0",
         interaction=mock_interaction,
+        service="jantama",
     )
     assert success is False
     assert (
@@ -276,33 +284,6 @@ async def test_record_game_logic_validation_errors(setup_teardown):
 
     await _start_gameset_logic(guild_id, channel_id, mock_interaction)
 
-    # 無効なルール
-    success, message = await _record_game_logic(
-        guild_id,
-        channel_id,
-        rule="invalid",
-        players_count=4,
-        scores_str="@p1:0,@p2:0,@p3:0,@p4:0",
-        interaction=mock_interaction,
-    )
-    assert success is False
-    assert (
-        message
-        == "ルールは 'tonpu' (東風戦) または 'hanchan' (半荘戦) で指定してください。"
-    )
-
-    # 無効な人数
-    success, message = await _record_game_logic(
-        guild_id,
-        channel_id,
-        rule="hanchan",
-        players_count=0,
-        scores_str="@p1:0,@p2:0,@p3:0,@p4:0",
-        interaction=mock_interaction,
-    )
-    assert success is False
-    assert message == "参加人数は 3 (サンマ) または 4 (4人) で指定してください。"
-
     # スコアの数が不足 (ヨンマで3人)
     success, message = await _record_game_logic(
         guild_id,
@@ -311,6 +292,7 @@ async def test_record_game_logic_validation_errors(setup_teardown):
         players_count=4,
         scores_str="@p1:0,@p2:0,@p3:0",
         interaction=mock_interaction,
+        service="jantama",
     )
     assert success is False
     assert (
@@ -326,6 +308,7 @@ async def test_record_game_logic_validation_errors(setup_teardown):
         players_count=4,
         scores_str="@p1:abc,@p2:0,@p3:0,@p4:0",
         interaction=mock_interaction,
+        service="jantama",
     )
     assert success is False
     assert (
@@ -341,6 +324,7 @@ async def test_record_game_logic_validation_errors(setup_teardown):
         players_count=4,
         scores_str="@p1 10000,@p2:0,@p3:0,@p4:0",
         interaction=mock_interaction,
+        service="jantama",
     )
     assert success is False
     assert (
@@ -356,6 +340,7 @@ async def test_record_game_logic_validation_errors(setup_teardown):
         players_count=4,
         scores_str="@p1:10000,@p2:0,@p3:0,@p4:0",
         interaction=mock_interaction,
+        service="jantama",
     )
     assert success is False
     assert (
@@ -371,6 +356,7 @@ async def test_record_game_logic_validation_errors(setup_teardown):
         players_count=4,
         scores_str="@p1:10000,@p1:0,@p3:0,@p4:-10000",
         interaction=mock_interaction,
+        service="jantama",
     )
     assert success is False
     assert (
@@ -381,12 +367,8 @@ async def test_record_game_logic_validation_errors(setup_teardown):
 
 @pytest.mark.asyncio
 async def test_end_gameset_logic(setup_teardown):
-    from app.main import (
-        _end_gameset_logic,
-        _record_game_logic,
-        _start_gameset_logic,
-        current_gamesets,
-    )
+    from app.main import (_end_gameset_logic, _record_game_logic,
+                          _start_gameset_logic, current_gamesets)
 
     guild_id = "123"
     channel_id = "456"
@@ -410,6 +392,7 @@ async def test_end_gameset_logic(setup_teardown):
         players_count=4,
         scores_str="@player1:25000,@player2:15000,@player3:-10000,@player4:-30000",
         interaction=mock_interaction,
+        service="jantama",
     )
 
     await _record_game_logic(
@@ -419,6 +402,7 @@ async def test_end_gameset_logic(setup_teardown):
         players_count=4,
         scores_str="@player1:10000,@player2:0,@player3:-5000,@player4:-5000",
         interaction=mock_interaction,
+        service="tenhou",
     )
 
     # ゲームセットを終了

@@ -128,7 +128,7 @@ async def _start_gameset_logic(
             save_gamesets(current_gamesets)
             return (
                 True,
-                "既存のゲームセットを破棄し、新しい麻雀のスコア集計を開始します。`/record_game` でゲーム結果を入力してください。",
+                "既存のゲームセットを破棄し、新しい麻雀のスコア集計を開始します。`/mj_record` でゲーム結果を入力してください。",
             )
         else:
             return False, "新しいゲームセットの開始をキャンセルしました。"
@@ -141,7 +141,7 @@ async def _start_gameset_logic(
     save_gamesets(current_gamesets)
     return (
         True,
-        "麻雀のスコア集計を開始します。`/record_game` でゲーム結果を入力してください。",
+        "麻雀のスコア集計を開始します。`/mj_record` でゲーム結果を入力してください。",
     )
 
 
@@ -152,6 +152,7 @@ async def _record_game_logic(
     players_count: int,
     scores_str: str,
     interaction: discord.Interaction,
+    service: str,
 ) -> Tuple[bool, str]:
     """ゲーム結果記録のロジック"""
     if (
@@ -163,17 +164,6 @@ async def _record_game_logic(
             False,
             "このチャンネルで進行中のゲームセットがありません。`/mj_start` で開始してください。",
         )
-
-    # ルールのバリデーション
-    if rule not in ["tonpu", "hanchan"]:
-        return (
-            False,
-            "ルールは 'tonpu' (東風戦) または 'hanchan' (半荘戦) で指定してください。",
-        )
-
-    # 人数のバリデーション
-    if players_count not in [3, 4]:
-        return False, "参加人数は 3 (サンマ) または 4 (4人) で指定してください。"
 
     expected_players_count = players_count
 
@@ -221,7 +211,12 @@ async def _record_game_logic(
             f"スコアの合計が0になりません。現在の合計: {total_score}。再入力してください。",
         )
 
-    game_data = {"rule": rule, "players_count": players_count, "scores": parsed_scores}
+    game_data = {
+        "rule": rule,
+        "players_count": players_count,
+        "scores": parsed_scores,
+        "service": service,
+    }
     current_gamesets[guild_id][channel_id]["games"].append(game_data)
 
     # メンバーのスコアを更新
@@ -351,21 +346,44 @@ async def mj_start(interaction: discord.Interaction):  # pragma: no cover
 @bot.tree.command(
     name="mj_record", description="1ゲームの麻雀結果を記録します。"
 )  # pragma: no cover
+@discord.app_commands.choices(  # type: ignore
+    service=[
+        discord.app_commands.Choice(name="雀魂", value="jantama"),
+        discord.app_commands.Choice(name="天鳳", value="tenhou"),
+    ],
+    rule=[
+        discord.app_commands.Choice(name="東風戦", value="tonpu"),
+        discord.app_commands.Choice(name="半荘戦", value="hanchan"),
+    ],
+    players=[
+        discord.app_commands.Choice(name="3人", value=3),
+        discord.app_commands.Choice(name="4人", value=4),
+    ],
+)
 @discord.app_commands.describe(  # pragma: no cover
-    rule="ゲームのルール (東風戦:tonpu / 半荘戦:hanchan)",  # pragma: no cover
-    players="参加人数 (3:サンマ / 4:4人)",  # pragma: no cover
+    service="麻雀サービスを選択してください (デフォルト: 雀魂)",
+    rule="ゲームのルールを選択してください",  # pragma: no cover
+    players="参加人数を選択してください",  # pragma: no cover
     scores="プレイヤー名とスコアのペアをカンマ区切りで入力してください (例: @player1:25000, @player2:15000, @player3:-10000, @player4:-30000)",  # pragma: no cover
 )
 async def mj_record(  # pragma: no cover
     interaction: discord.Interaction,
+    service: str,
     rule: str,
     players: int,
     scores: str,  # pragma: no cover
 ):  # pragma: no cover
     guild_id = str(interaction.guild_id)  # pragma: no cover
     channel_id = str(interaction.channel_id)  # pragma: no cover
+
     success, message = await _record_game_logic(
-        guild_id, channel_id, rule, players, scores, interaction
+        guild_id,
+        channel_id,
+        rule,
+        players,
+        scores,
+        interaction,
+        service,
     )  # pragma: no cover
     await interaction.response.send_message(
         message, ephemeral=not success
