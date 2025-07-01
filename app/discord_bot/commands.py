@@ -1,3 +1,4 @@
+import re
 from typing import List, Optional
 
 import discord
@@ -15,6 +16,18 @@ async def get_mention_from_player_name(
     interaction: discord.Interaction, player_name: str
 ) -> str:
     """プレイヤー名からDiscordのメンション文字列を取得する"""
+    # DiscordのユーザーID形式のメンションを検出
+    match = re.match(r"<@!?(\d+)>", player_name)
+    if match:
+        user_id = int(match.group(1))
+        try:
+            # ユーザーオブジェクトを取得し、表示名またはグローバル名を使用
+            user = await interaction.client.fetch_user(user_id)
+            return user.display_name or user.global_name or player_name
+        except discord.NotFound:
+            # ユーザーが見つからない場合は元のプレイヤー名を返す
+            return player_name
+
     if interaction.guild:
         # ニックネームまたはユーザー名でメンバーを検索
         for member in interaction.guild.members:
@@ -23,7 +36,7 @@ async def get_mention_from_player_name(
     return player_name  # 見つからない場合は元のプレイヤー名を返す
 
 
-class RecordScoreModal(Modal, title="ゲーム結果の記録"):
+class ScoreInputModal(Modal, title="スコア入力"):
     def __init__(
         self,
         guild_id: str,
@@ -31,7 +44,7 @@ class RecordScoreModal(Modal, title="ゲーム結果の記録"):
         rule: str,
         players_count: int,
         service: str,
-        registered_members: List[str],
+        selected_players: List[str],
     ):
         super().__init__()
         self.guild_id = guild_id
@@ -39,67 +52,32 @@ class RecordScoreModal(Modal, title="ゲーム結果の記録"):
         self.rule = rule
         self.players_count = players_count
         self.service = service
-        self.registered_members = registered_members
+        self.selected_players = selected_players
+        self.score_inputs: List[TextInput] = []
 
-        self.scores_input: TextInput = TextInput(
-            label=f"{players_count}人分のスコアを入力してください",
-            placeholder="例: プレイヤーA:25000, プレイヤーB:15000, プレイヤーC:-10000, プレイヤーD:-30000",
-            style=discord.TextStyle.paragraph,
-            required=True,
-        )
-        self.add_item(self.scores_input)
+        for player_name in self.selected_players:
+            text_input: TextInput = TextInput(  # 型アノテーションを追加
+                label=f"{player_name} のスコア",
+                placeholder="例: 25000",
+                required=True,
+            )
+            self.add_item(text_input)
+            self.score_inputs.append(text_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        scores_str = self.scores_input.value
-        guild_id = str(interaction.guild_id)
-        channel_id = str(interaction.channel_id)
-
-        # ここでスコア文字列のバリデーションとパースを行う
         parsed_scores = {}
         total_score = 0
-        player_names_in_input = []
+        scores_str_parts = []
 
-        score_entries = [s.strip() for s in scores_str.split(",")]
-
-        if len(score_entries) != self.players_count:
-            await interaction.response.send_message(
-                f"エラー: {self.players_count}人分のスコアを入力してください。現在 {len(score_entries)}人分のスコアが入力されています。",
-                ephemeral=True,
-            )
-            return
-
-        for entry in score_entries:
+        for i, player_name in enumerate(self.selected_players):
             try:
-                name, score_str_val = entry.split(":")
-                player_name = name.strip().lstrip("@")
-
-                if player_name not in self.registered_members:
-                    await interaction.response.send_message(
-                        f"エラー: メンバー '{player_name}' は登録されていません。`/mj_member` で登録してください。",
-                        ephemeral=True,
-                    )
-                    return
-
-                if player_name in player_names_in_input:
-                    await interaction.response.send_message(
-                        f"エラー: プレイヤー名 '{player_name}' が重複しています。異なるプレイヤー名を入力してください。",
-                        ephemeral=True,
-                    )
-                    return
-                player_names_in_input.append(player_name)
-
-                score = int(score_str_val)
+                score = int(self.score_inputs[i].value)
                 parsed_scores[player_name] = score
                 total_score += score
+                scores_str_parts.append(f"{player_name}:{score}")
             except ValueError:
                 await interaction.response.send_message(
-                    "エラー: スコアの形式が正しくありません。`名前:スコア` の形式で入力してください (例: `@player1:25000`)。",
-                    ephemeral=True,
-                )
-                return
-            except IndexError:
-                await interaction.response.send_message(
-                    "エラー: スコアの形式が正しくありません。`名前:スコア` の形式で入力してください (例: `@player1:25000`)。",
+                    f"エラー: {player_name} のスコアが数値ではありません。再入力してください。",
                     ephemeral=True,
                 )
                 return
@@ -111,12 +89,14 @@ class RecordScoreModal(Modal, title="ゲーム結果の記録"):
             )
             return
 
+        scores_str = ",".join(scores_str_parts)
+
         success, message, sorted_scores = gameset_manager.record_game(
-            guild_id,
-            channel_id,
+            self.guild_id,
+            self.channel_id,
             self.rule,
             self.players_count,
-            scores_str,  # record_gameの引数はscores_strのままにしておく
+            scores_str,
             self.service,
         )
 
@@ -131,6 +111,57 @@ class RecordScoreModal(Modal, title="ゲーム結果の記録"):
             final_message = message
 
         await interaction.response.send_message(final_message, ephemeral=not success)
+
+
+class PlayerSelectView(View):
+    def __init__(
+        self,
+        guild_id: str,
+        channel_id: str,
+        rule: str,
+        players_count: int,
+        service: str,
+        registered_members: List[str],
+    ):
+        super().__init__(timeout=60)
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.rule = rule
+        self.players_count = players_count
+        self.service = service
+        self.registered_members = registered_members
+        self.selected_players: List[str] = []
+
+        options = [
+            discord.SelectOption(label=member, value=member)
+            for member in registered_members
+        ]
+
+        self.player_select: discord.ui.Select = (
+            discord.ui.Select(  # 型アノテーションを追加
+                placeholder=f"{players_count}人のプレイヤーを選択してください",
+                min_values=players_count,
+                max_values=players_count,
+                options=options,
+            )
+        )
+        self.add_item(self.player_select)
+
+        # コールバックを直接割り当てる (mypyエラー回避のためtype: ignoreを追加)
+        self.player_select.callback = self.on_player_select  # type: ignore
+
+    async def on_player_select(self, interaction: discord.Interaction):
+        self.selected_players = self.player_select.values
+        await interaction.response.send_modal(
+            ScoreInputModal(
+                self.guild_id,
+                self.channel_id,
+                self.rule,
+                self.players_count,
+                self.service,
+                self.selected_players,
+            )
+        )
 
 
 class ConfirmStartGamesetView(View):
@@ -275,11 +306,13 @@ async def mj_record(
         )
         return
 
-    # モーダルを表示
-    modal = RecordScoreModal(
+    # プレイヤー選択Viewを表示
+    view = PlayerSelectView(
         guild_id, channel_id, rule, players, service, registered_members
     )
-    await interaction.response.send_modal(modal)
+    await interaction.response.send_message(
+        "ゲームに参加するメンバーを選択してください。", view=view, ephemeral=True
+    )
 
 
 # 現在のスコア表示コマンド
