@@ -48,15 +48,16 @@ def save_gamesets(gamesets: Dict[str, Any]) -> None:
 
 
 # プレイヤー名からDiscordのメンション文字列を取得するヘルパー関数
-async def get_mention_from_player_id(
-    interaction: discord.Interaction, player_id: int
+async def get_mention_from_player_name(
+    interaction: discord.Interaction, player_name: str
 ) -> str:
-    """プレイヤーIDからDiscordのメンション文字列を取得する"""
+    """プレイヤー名からDiscordのメンション文字列を取得する"""
     if interaction.guild:
-        member = await interaction.guild.fetch_member(player_id)
-        if member:
-            return member.mention
-    return f"<@{player_id}>"  # 見つからない場合はIDを返す
+        # ニックネームまたはユーザー名でメンバーを検索
+        for member in interaction.guild.members:
+            if member.nick == player_name or member.name == player_name:
+                return member.mention
+    return player_name  # 見つからない場合は元のプレイヤー名を返す
 
 
 # 現在進行中のゲームセットを管理する辞書
@@ -115,7 +116,7 @@ class ScoreInputModal(Modal, title="スコア入力"):
 class PlayerSelectView(View):
     def __init__(
         self,
-        registered_members: List[Dict[str, Any]],
+        registered_members: List[str],
         players_count: int,
         rule: str,
         service: str,
@@ -125,16 +126,14 @@ class PlayerSelectView(View):
         self.players_count = players_count
         self.rule = rule
         self.service = service
-        self.selected_players: List[Dict[str, Any]] = []
+        self.selected_players: List[str] = []
 
         self.select: Select = Select(
             placeholder="プレイヤーを選択してください",
             min_values=players_count,
             max_values=players_count,
             options=[
-                discord.SelectOption(
-                    label=member["display_name"], value=str(member["id"])
-                )
+                discord.SelectOption(label=member, value=member)
                 for member in registered_members
             ],
         )
@@ -142,12 +141,8 @@ class PlayerSelectView(View):
         self.add_item(self.select)
 
     async def select_callback(self, interaction: discord.Interaction):
-        selected_ids = [int(v) for v in self.select.values]
-        self.selected_players = [
-            member for member in self.registered_members if member["id"] in selected_ids
-        ]
-        player_names = [p["display_name"] for p in self.selected_players]
-        modal = ScoreInputModal(player_names)
+        self.selected_players = self.select.values
+        modal = ScoreInputModal(self.selected_players)
         await interaction.response.send_modal(modal)
         await modal.wait()
 
@@ -162,7 +157,6 @@ class PlayerSelectView(View):
                 modal.scores,
                 interaction,
                 self.service,
-                self.selected_players,
             )
             # on_submitでdefer()しているので、followup.sendを使う
             await interaction.followup.send(message, ephemeral=not success)
@@ -205,7 +199,7 @@ async def _start_gameset_logic(
 
 
 async def _add_member_logic(
-    guild_id: str, channel_id: str, member: discord.Member
+    guild_id: str, channel_id: str, member_name: str
 ) -> Tuple[bool, str]:
     """メンバー登録のロジック"""
     if (
@@ -222,14 +216,12 @@ async def _add_member_logic(
     if "registered_members" not in gameset:
         gameset["registered_members"] = []
 
-    if any(m["id"] == member.id for m in gameset["registered_members"]):
-        return False, f"メンバー '{member.display_name}' はすでに登録されています。"
+    if member_name in gameset["registered_members"]:
+        return False, f"メンバー '{member_name}' はすでに登録されています。"
 
-    gameset["registered_members"].append(
-        {"id": member.id, "display_name": member.display_name}
-    )
+    gameset["registered_members"].append(member_name)
     save_gamesets(current_gamesets)
-    return True, f"メンバー '{member.display_name}' を登録しました。"
+    return True, f"メンバー '{member_name}' を登録しました。"
 
 
 async def _list_members_logic(guild_id: str, channel_id: str) -> Tuple[bool, str]:
@@ -250,8 +242,7 @@ async def _list_members_logic(guild_id: str, channel_id: str) -> Tuple[bool, str
     if not registered_members:
         return True, "現在登録されているメンバーはいません。"
 
-    member_list = [m["display_name"] for m in registered_members]
-    return True, "登録済みメンバー:\n- " + "\n- ".join(member_list)
+    return True, "登録済みメンバー:\n- " + "\n- ".join(registered_members)
 
 
 async def _record_game_logic(
@@ -262,7 +253,6 @@ async def _record_game_logic(
     parsed_scores: Dict[str, int],
     interaction: discord.Interaction,
     service: str,
-    selected_players: List[Dict[str, Any]],
 ) -> Tuple[bool, str]:
     """ゲーム結果記録のロジック"""
     if (
@@ -303,17 +293,8 @@ async def _record_game_logic(
     result_parts = []
     for i, (player, score) in enumerate(sorted_game_scores):
         rank = i + 1
-        # playerはdisplay_nameなので、IDに変換する必要がある
-        player_id = None
-        for p in selected_players:
-            if p["display_name"] == player:
-                player_id = p["id"]
-                break
-        if player_id:
-            mention = await get_mention_from_player_id(interaction, player_id)
-            result_parts.append(f"{mention}: {score} ({rank}着)")
-        else:
-            result_parts.append(f"{player}: {score} ({rank}着)")
+        mention = await get_mention_from_player_name(interaction, player)
+        result_parts.append(f"{mention}: {score} ({rank}着)")
 
     return True, "ゲーム結果を記録しました。\n" + ", ".join(result_parts)
 
@@ -343,18 +324,8 @@ async def _current_scores_logic(
     result_message = "## 現在のトータルスコア\n"
     for i, (player, score) in enumerate(sorted_scores):
         rank = i + 1
-        # playerはdisplay_nameなので、IDに変換する必要がある
-        player_id = None
-        # registered_membersから探す
-        for m in gameset_data.get("registered_members", []):
-            if m["display_name"] == player:
-                player_id = m["id"]
-                break
-        if player_id:
-            mention = await get_mention_from_player_id(interaction, player_id)
-            result_message += f"- {mention}: {score} ({rank}位)\n"
-        else:
-            result_message += f"- {player}: {score} ({rank}位)\n"
+        mention = await get_mention_from_player_name(interaction, player)
+        result_message += f"- {mention}: {score} ({rank}位)\n"
 
     return True, result_message
 
@@ -383,18 +354,8 @@ async def _end_gameset_logic(
     result_message = "## 麻雀ゲームセット結果\n"
     for i, (player, score) in enumerate(sorted_scores):
         rank = i + 1
-        # playerはdisplay_nameなので、IDに変換する必要がある
-        player_id = None
-        # registered_membersから探す
-        for m in gameset_data.get("registered_members", []):
-            if m["display_name"] == player:
-                player_id = m["id"]
-                break
-        if player_id:
-            mention = await get_mention_from_player_id(interaction, player_id)
-            result_message += f"- {mention}: {score} ({rank}位)\n"
-        else:
-            result_message += f"- {player}: {score} ({rank}位)\n"
+        mention = await get_mention_from_player_name(interaction, player)
+        result_message += f"- {mention}: {score} ({rank}位)\n"
 
     current_gamesets[guild_id][channel_id]["status"] = "inactive"
     save_gamesets(current_gamesets)
@@ -420,11 +381,11 @@ async def mj_start(interaction: discord.Interaction):
 @bot.tree.command(
     name="mj_member", description="ゲームセットに参加するメンバーを登録します。"
 )
-@discord.app_commands.describe(member="登録するメンバー")
-async def mj_member(interaction: discord.Interaction, member: discord.Member):
+@discord.app_commands.describe(name="登録するメンバーの名前")
+async def mj_member(interaction: discord.Interaction, name: str):
     guild_id = str(interaction.guild_id)
     channel_id = str(interaction.channel_id)
-    success, message = await _add_member_logic(guild_id, channel_id, member)
+    success, message = await _add_member_logic(guild_id, channel_id, name)
     await interaction.response.send_message(message, ephemeral=not success)
 
 
