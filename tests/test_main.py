@@ -188,7 +188,8 @@ async def test_start_gameset_logic(setup_teardown):
 
 @pytest.mark.asyncio
 async def test_record_game_logic_success(setup_teardown):
-    from app.main import _record_game_logic, _start_gameset_logic, current_gamesets
+    from app.main import (_record_game_logic, _start_gameset_logic,
+                          current_gamesets)
 
     guild_id = "123"
     channel_id = "456"
@@ -366,12 +367,8 @@ async def test_record_game_logic_validation_errors(setup_teardown):
 
 @pytest.mark.asyncio
 async def test_end_gameset_logic(setup_teardown):
-    from app.main import (
-        _end_gameset_logic,
-        _record_game_logic,
-        _start_gameset_logic,
-        current_gamesets,
-    )
+    from app.main import (_end_gameset_logic, _record_game_logic,
+                          _start_gameset_logic, current_gamesets)
 
     guild_id = "123"
     channel_id = "456"
