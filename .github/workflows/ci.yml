@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install Poetry
+      run: |
+        pip install poetry
+        poetry config virtualenvs.in-project true
+
+    - name: Install dependencies
+      run: |
+        poetry install
+
+    - name: Run black
+      run: |
+        poetry run black --check .
+
+    - name: Run ruff
+      run: |
+        poetry run ruff check .
+
+    - name: Run isort
+      run: |
+        poetry run isort --check-only .
+
+    - name: Run mypy
+      run: |
+        poetry run mypy .
+
+    - name: Run pytest
+      run: |
+        poetry run pytest
