@@ -93,8 +93,7 @@ async def test_start_gameset_logic(setup_teardown):
 
 @pytest.mark.asyncio
 async def test_add_member_logic(setup_teardown):
-    from app.main import (_add_member_logic, _start_gameset_logic,
-                          current_gamesets)
+    from app.main import _add_member_logic, _start_gameset_logic, current_gamesets
 
     guild_id = "123"
     channel_id = "456"
@@ -121,8 +120,7 @@ async def test_add_member_logic(setup_teardown):
 
 @pytest.mark.asyncio
 async def test_list_members_logic(setup_teardown):
-    from app.main import (_add_member_logic, _list_members_logic,
-                          _start_gameset_logic)
+    from app.main import _add_member_logic, _list_members_logic, _start_gameset_logic
 
     guild_id = "123"
     channel_id = "456"
