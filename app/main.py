@@ -302,9 +302,10 @@ async def _end_gameset_logic(
     sorted_scores = sorted(total_scores.items(), key=lambda item: item[1], reverse=True)
 
     result_message = "## 麻雀ゲームセット結果\n"
-    for player, score in sorted_scores:
+    for i, (player, score) in enumerate(sorted_scores):
+        rank = i + 1
         mention = await get_mention_from_player_name(interaction, player)
-        result_message += f"- {mention}: {score}\n"
+        result_message += f"- {mention}: {score} ({rank}位)\n"
 
     # ゲームセットを非アクティブにする
     current_gamesets[guild_id][channel_id]["status"] = "inactive"
