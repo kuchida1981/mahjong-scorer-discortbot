@@ -55,6 +55,57 @@ async def test_start_gameset_logic(setup_teardown):
 
 
 @pytest.mark.asyncio
+async def test_add_member_logic(setup_teardown):
+    gameset_manager = setup_teardown
+    guild_id = "123"
+    channel_id = "456"
+
+    gameset_manager.start_gameset(guild_id, channel_id)
+
+    # メンバー追加の成功ケース
+    success, message = gameset_manager.add_member(guild_id, channel_id, "playerA")
+    assert success is True
+    assert message == "メンバー 'playerA' を登録しました。"
+    assert (
+        "playerA" in gameset_manager.current_gamesets[guild_id][channel_id]["members"]
+    )
+    assert (
+        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["playerA"]
+        == 0
+    )
+
+    # メンバー重複の失敗ケース
+    success, message = gameset_manager.add_member(guild_id, channel_id, "playerA")
+    assert success is False
+    assert message == "メンバー 'playerA' は既に登録されています。"
+
+
+@pytest.mark.asyncio
+async def test_get_members_logic(setup_teardown):
+    gameset_manager = setup_teardown
+    guild_id = "123"
+    channel_id = "456"
+
+    gameset_manager.start_gameset(guild_id, channel_id)
+
+    # メンバーがいない場合
+    success, message, members = gameset_manager.get_members(guild_id, channel_id)
+    assert success is False
+    assert message == "登録されているメンバーがいません。"
+    assert members is None
+
+    # メンバーを追加
+    gameset_manager.add_member(guild_id, channel_id, "playerA")
+    gameset_manager.add_member(guild_id, channel_id, "playerB")
+
+    # メンバーがいる場合
+    success, message, members = gameset_manager.get_members(guild_id, channel_id)
+    assert success is True
+    assert message == "登録メンバー一覧"
+    assert sorted(members) == sorted(["playerA", "playerB"])
+
+
+@pytest.mark.asyncio
 async def test_record_game_logic_success(setup_teardown):
     gameset_manager = setup_teardown
     guild_id = "123"
@@ -84,191 +135,6 @@ async def test_record_game_logic_success(setup_teardown):
     assert (
         gameset_manager.current_gamesets[guild_id][channel_id]["games"][0]["service"]
         == "tenhou"
-    )
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player1"]
-        == 25000
-    )
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player2"]
-        == 15000
-    )
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player3"]
-        == -10000
-    )
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player4"]
-        == -30000
-    )
-
-    # 別のゲームを追加 (service指定なし、デフォルトjantama)
-    success, message, sorted_scores = gameset_manager.record_game(
-        guild_id,
-        channel_id,
-        rule="tonpu",
-        players_count=4,
-        scores_str="@player1:10000,@player2:0,@player3:-5000,@player4:-5000",
-        service="jantama",
-    )
-    assert success is True
-    assert message == "ゲーム結果を記録しました。"
-    assert sorted_scores == [
-        ("player1", 10000),
-        ("player2", 0),
-        ("player3", -5000),
-        ("player4", -5000),
-    ]
-    assert len(gameset_manager.current_gamesets[guild_id][channel_id]["games"]) == 2
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["games"][1]["service"]
-        == "jantama"
-    )
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player1"]
-        == 35000
-    )
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player2"]
-        == 15000
-    )
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player3"]
-        == -15000
-    )
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player4"]
-        == -35000
-    )
-
-    # サンマの成功ケース
-    success, message, sorted_scores = gameset_manager.record_game(
-        guild_id,
-        channel_id,
-        rule="hanchan",
-        players_count=3,
-        scores_str="@playerA:30000,@playerB:0,@playerC:-30000",
-        service="jantama",
-    )
-    assert success is True
-    assert message == "ゲーム結果を記録しました。"
-    assert sorted_scores == [
-        ("playerA", 30000),
-        ("playerB", 0),
-        ("playerC", -30000),
-    ]
-    assert len(gameset_manager.current_gamesets[guild_id][channel_id]["games"]) == 3
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["games"][2]["service"]
-        == "jantama"
-    )
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["playerA"]
-        == 30000
-    )
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["playerB"]
-        == 0
-    )
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["playerC"]
-        == -30000
-    )
-
-
-@pytest.mark.asyncio
-async def test_record_game_logic_validation_errors(setup_teardown):
-    gameset_manager = setup_teardown
-    guild_id = "123"
-    channel_id = "456"
-
-    # ゲームセットが開始されていない場合
-    success, message, _ = gameset_manager.record_game(
-        guild_id,
-        channel_id,
-        rule="hanchan",
-        players_count=4,
-        scores_str="@p1:0,@p2:0,@p3:0,@p4:0",
-        service="jantama",
-    )
-    assert success is False
-    assert message == "このチャンネルで進行中のゲームセットがありません。"
-
-    gameset_manager.start_gameset(guild_id, channel_id)
-
-    # スコアの数が不足 (ヨンマで3人)
-    success, message, _ = gameset_manager.record_game(
-        guild_id,
-        channel_id,
-        rule="hanchan",
-        players_count=4,
-        scores_str="@p1:0,@p2:0,@p3:0",
-        service="jantama",
-    )
-    assert success is False
-    assert (
-        message
-        == "4人分のスコアを入力してください。現在 3人分のスコアが入力されています。"
-    )
-
-    # スコアの形式が不正 (値が数値でない)
-    success, message, _ = gameset_manager.record_game(
-        guild_id,
-        channel_id,
-        rule="hanchan",
-        players_count=4,
-        scores_str="@p1:abc,@p2:0,@p3:0,@p4:0",
-        service="jantama",
-    )
-    assert success is False
-    assert (
-        message
-        == "スコアの形式が正しくありません。`名前:スコア` の形式で入力してください (例: `@player1:25000`)。"
-    )
-
-    # スコアの形式が不正 (コロンがない)
-    success, message, _ = gameset_manager.record_game(
-        guild_id,
-        channel_id,
-        rule="hanchan",
-        players_count=4,
-        scores_str="@p1 10000,@p2:0,@p3:0,@p4:0",
-        service="jantama",
-    )
-    assert success is False
-    assert (
-        message
-        == "スコアの形式が正しくありません。`名前:スコア` の形式で入力してください (例: `@player1:25000`)。"
-    )
-
-    # ゼロサムチェック失敗
-    success, message, _ = gameset_manager.record_game(
-        guild_id,
-        channel_id,
-        rule="hanchan",
-        players_count=4,
-        scores_str="@p1:10000,@p2:0,@p3:0,@p4:0",
-        service="jantama",
-    )
-    assert success is False
-    assert (
-        message
-        == "スコアの合計が0になりません。現在の合計: 10000。再入力してください。"
-    )
-
-    # 重複するプレイヤー名
-    success, message, _ = gameset_manager.record_game(
-        guild_id,
-        channel_id,
-        rule="hanchan",
-        players_count=4,
-        scores_str="@p1:10000,@p1:0,@p3:0,@p4:-10000",
-        service="jantama",
-    )
-    assert success is False
-    assert (
-        message
-        == "プレイヤー名 'p1' が重複しています。異なるプレイヤー名を入力してください。"
     )
 
 

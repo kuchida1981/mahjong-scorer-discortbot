@@ -27,6 +27,24 @@ class GamesetManager:
     def _save_current_gamesets(self) -> None:
         save_gamesets(self.current_gamesets)
 
+    def add_member(
+        self, guild_id: str, channel_id: str, member_name: str
+    ) -> Tuple[bool, str]:
+        gameset_data = self._get_gameset_data(guild_id, channel_id)
+        if member_name in gameset_data["members"]:
+            return False, f"メンバー '{member_name}' は既に登録されています。"
+        gameset_data["members"][member_name] = 0
+        self._save_current_gamesets()
+        return True, f"メンバー '{member_name}' を登録しました。"
+
+    def get_members(
+        self, guild_id: str, channel_id: str
+    ) -> Tuple[bool, str, Optional[List[str]]]:
+        gameset_data = self._get_gameset_data(guild_id, channel_id)
+        if not gameset_data["members"]:
+            return False, "登録されているメンバーがいません。", None
+        return True, "登録メンバー一覧", list(gameset_data["members"].keys())
+
     def start_gameset(self, guild_id: str, channel_id: str) -> Tuple[bool, str]:
         gameset_data = self._get_gameset_data(guild_id, channel_id)
 
