@@ -1,7 +1,8 @@
+from typing import List, Optional
+
 import discord
 from discord.ext import commands
-from discord.ui import Button, View
-from typing import Optional
+from discord.ui import Button, Modal, TextInput, View
 
 from app.core.gameset_manager import GamesetManager
 
@@ -20,6 +21,116 @@ async def get_mention_from_player_name(
             if member.nick == player_name or member.name == player_name:
                 return member.mention
     return player_name  # 見つからない場合は元のプレイヤー名を返す
+
+
+class RecordScoreModal(Modal, title="ゲーム結果の記録"):
+    def __init__(
+        self,
+        guild_id: str,
+        channel_id: str,
+        rule: str,
+        players_count: int,
+        service: str,
+        registered_members: List[str],
+    ):
+        super().__init__()
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.rule = rule
+        self.players_count = players_count
+        self.service = service
+        self.registered_members = registered_members
+
+        self.scores_input: TextInput = TextInput(
+            label=f"{players_count}人分のスコアを入力してください",
+            placeholder="例: プレイヤーA:25000, プレイヤーB:15000, プレイヤーC:-10000, プレイヤーD:-30000",
+            style=discord.TextStyle.paragraph,
+            required=True,
+        )
+        self.add_item(self.scores_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        scores_str = self.scores_input.value
+        guild_id = str(interaction.guild_id)
+        channel_id = str(interaction.channel_id)
+
+        # ここでスコア文字列のバリデーションとパースを行う
+        parsed_scores = {}
+        total_score = 0
+        player_names_in_input = []
+
+        score_entries = [s.strip() for s in scores_str.split(",")]
+
+        if len(score_entries) != self.players_count:
+            await interaction.response.send_message(
+                f"エラー: {self.players_count}人分のスコアを入力してください。現在 {len(score_entries)}人分のスコアが入力されています。",
+                ephemeral=True,
+            )
+            return
+
+        for entry in score_entries:
+            try:
+                name, score_str_val = entry.split(":")
+                player_name = name.strip().lstrip("@")
+
+                if player_name not in self.registered_members:
+                    await interaction.response.send_message(
+                        f"エラー: メンバー '{player_name}' は登録されていません。`/mj_member` で登録してください。",
+                        ephemeral=True,
+                    )
+                    return
+
+                if player_name in player_names_in_input:
+                    await interaction.response.send_message(
+                        f"エラー: プレイヤー名 '{player_name}' が重複しています。異なるプレイヤー名を入力してください。",
+                        ephemeral=True,
+                    )
+                    return
+                player_names_in_input.append(player_name)
+
+                score = int(score_str_val)
+                parsed_scores[player_name] = score
+                total_score += score
+            except ValueError:
+                await interaction.response.send_message(
+                    "エラー: スコアの形式が正しくありません。`名前:スコア` の形式で入力してください (例: `@player1:25000`)。",
+                    ephemeral=True,
+                )
+                return
+            except IndexError:
+                await interaction.response.send_message(
+                    "エラー: スコアの形式が正しくありません。`名前:スコア` の形式で入力してください (例: `@player1:25000`)。",
+                    ephemeral=True,
+                )
+                return
+
+        if total_score != 0:
+            await interaction.response.send_message(
+                f"エラー: スコアの合計が0になりません。現在の合計: {total_score}。再入力してください。",
+                ephemeral=True,
+            )
+            return
+
+        success, message, sorted_scores = gameset_manager.record_game(
+            guild_id,
+            channel_id,
+            self.rule,
+            self.players_count,
+            scores_str,  # record_gameの引数はscores_strのままにしておく
+            self.service,
+        )
+
+        if success and sorted_scores:
+            result_parts = []
+            for i, (player, score) in enumerate(sorted_scores):
+                rank = i + 1
+                mention = await get_mention_from_player_name(interaction, player)
+                result_parts.append(f"{mention}: {score} ({rank}着)")
+            final_message = f"{message}\n" + ", ".join(result_parts)
+        else:
+            final_message = message
+
+        await interaction.response.send_message(final_message, ephemeral=not success)
 
 
 class ConfirmStartGamesetView(View):
@@ -84,6 +195,43 @@ async def mj_start(interaction: discord.Interaction):  # type: ignore
     await interaction.response.send_message(final_message, ephemeral=not success)
 
 
+# メンバー登録コマンド
+@discord.app_commands.command(
+    name="mj_member", description="ゲームセットにメンバーを登録します。"
+)
+@discord.app_commands.describe(member_name="登録するメンバーの名前")
+async def mj_member(interaction: discord.Interaction, member_name: str):  # type: ignore
+    guild_id = str(interaction.guild_id)
+    channel_id = str(interaction.channel_id)
+
+    success, message = gameset_manager.add_member(guild_id, channel_id, member_name)
+    await interaction.response.send_message(message, ephemeral=not success)
+
+
+# メンバー一覧表示コマンド
+@discord.app_commands.command(
+    name="mj_member_list", description="登録されているメンバーの一覧を表示します。"
+)
+async def mj_member_list(interaction: discord.Interaction):  # type: ignore
+    guild_id = str(interaction.guild_id)
+    channel_id = str(interaction.channel_id)
+
+    success, message, members = gameset_manager.get_members(guild_id, channel_id)
+
+    if success and members:
+        member_mentions = []
+        for member_name in members:
+            mention = await get_mention_from_player_name(interaction, member_name)
+            member_mentions.append(mention)
+        final_message = "## 登録メンバー一覧\n" + "\n".join(
+            [f"- {m}" for m in member_mentions]
+        )
+    else:
+        final_message = message
+
+    await interaction.response.send_message(final_message, ephemeral=not success)
+
+
 # ゲーム結果記録コマンド
 @discord.app_commands.command(
     name="mj_record", description="1ゲームの麻雀結果を記録します。"
@@ -106,38 +254,32 @@ async def mj_start(interaction: discord.Interaction):  # type: ignore
     service="麻雀サービスを選択してください (デフォルト: 雀魂)",
     rule="ゲームのルールを選択してください",
     players="参加人数を選択してください",
-    scores="プレイヤー名とスコアのペアをカンマ区切りで入力してください (例: @player1:25000, @player2:15000, @player3:-10000, @player4:-30000)",
 )
 async def mj_record(
     interaction: discord.Interaction,  # type: ignore
     service: str,
     rule: str,
     players: int,
-    scores: str,
 ):
     guild_id = str(interaction.guild_id)
     channel_id = str(interaction.channel_id)
 
-    success, message, sorted_scores = gameset_manager.record_game(
-        guild_id,
-        channel_id,
-        rule,
-        players,
-        scores,
-        service,
+    # メンバーが登録されているか確認
+    success, message, registered_members = gameset_manager.get_members(
+        guild_id, channel_id
     )
+    if not success or not registered_members:
+        await interaction.response.send_message(
+            message + " `/mj_member` コマンドでメンバーを登録してください。",
+            ephemeral=True,
+        )
+        return
 
-    if success and sorted_scores:
-        result_parts = []
-        for i, (player, score) in enumerate(sorted_scores):
-            rank = i + 1
-            mention = await get_mention_from_player_name(interaction, player)
-            result_parts.append(f"{mention}: {score} ({rank}着)")
-        final_message = f"{message}\n" + ", ".join(result_parts)
-    else:
-        final_message = message
-
-    await interaction.response.send_message(final_message, ephemeral=not success)
+    # モーダルを表示
+    modal = RecordScoreModal(
+        guild_id, channel_id, rule, players, service, registered_members
+    )
+    await interaction.response.send_modal(modal)
 
 
 # 現在のスコア表示コマンド
@@ -191,6 +333,8 @@ async def mj_end(interaction: discord.Interaction):  # type: ignore
 
 def setup(bot: commands.Bot):
     bot.tree.add_command(mj_start)
+    bot.tree.add_command(mj_member)
+    bot.tree.add_command(mj_member_list)
     bot.tree.add_command(mj_record)
     bot.tree.add_command(mj_scores)
     bot.tree.add_command(mj_end)
