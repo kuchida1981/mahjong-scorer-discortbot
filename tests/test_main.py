@@ -188,8 +188,7 @@ async def test_start_gameset_logic(setup_teardown):
 
 @pytest.mark.asyncio
 async def test_record_game_logic_success(setup_teardown):
-    from app.main import (_record_game_logic, _start_gameset_logic,
-                          current_gamesets)
+    from app.main import _record_game_logic, _start_gameset_logic, current_gamesets
 
     guild_id = "123"
     channel_id = "456"
@@ -367,8 +366,12 @@ async def test_record_game_logic_validation_errors(setup_teardown):
 
 @pytest.mark.asyncio
 async def test_end_gameset_logic(setup_teardown):
-    from app.main import (_end_gameset_logic, _record_game_logic,
-                          _start_gameset_logic, current_gamesets)
+    from app.main import (
+        _end_gameset_logic,
+        _record_game_logic,
+        _start_gameset_logic,
+        current_gamesets,
+    )
 
     guild_id = "123"
     channel_id = "456"
@@ -412,10 +415,10 @@ async def test_end_gameset_logic(setup_teardown):
     assert success is True
     expected_message = (
         "## 麻雀ゲームセット結果\n"
-        "- <@111111111111111111>: 35000\n"
-        "- <@222222222222222222>: 15000\n"
-        "- <@333333333333333333>: -15000\n"
-        "- <@444444444444444444>: -35000\n"
+        "- <@111111111111111111>: 35000 (1位)\n"
+        "- <@222222222222222222>: 15000 (2位)\n"
+        "- <@333333333333333333>: -15000 (3位)\n"
+        "- <@444444444444444444>: -35000 (4位)\n"
     )
     assert message == expected_message
     assert current_gamesets[guild_id][channel_id]["status"] == "inactive"
