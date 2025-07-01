@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from discord.ui import Button, View
-from typing import Optional, Tuple, List
+from typing import Optional
 
 from app.core.gameset_manager import GamesetManager
 
