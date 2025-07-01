@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
+from app.core.models import Gameset, GamesetsRoot
+
 # テスト用にDATA_FILEを上書き
 TEST_DATA_FILE = "test_gamesets.json"
 
@@ -22,7 +24,8 @@ def setup_teardown():
         from app.core.gameset_manager import GamesetManager
 
         gameset_manager = GamesetManager()
-        gameset_manager.current_gamesets.clear()  # 念のためクリア
+        # Pydanticモデルの初期化方法に合わせて変更
+        gameset_manager.current_gamesets = GamesetsRoot()
 
         yield gameset_manager
 
@@ -41,17 +44,17 @@ async def test_start_gameset_logic(setup_teardown):
     success, message = gameset_manager.start_gameset(guild_id, channel_id)
     assert success is True
     assert message == "麻雀のスコア集計を開始します。"
-    assert gameset_manager.current_gamesets[guild_id][channel_id]["status"] == "active"
-    assert gameset_manager.current_gamesets[guild_id][channel_id]["games"] == []
-    assert gameset_manager.current_gamesets[guild_id][channel_id]["members"] == {}
+    assert gameset_manager.current_gamesets[guild_id][channel_id].status == "active"
+    assert gameset_manager.current_gamesets[guild_id][channel_id].games == []
+    assert gameset_manager.current_gamesets[guild_id][channel_id].members == {}
 
     # 既に進行中のゲームセットがある場合のテスト
     success, message = gameset_manager.start_gameset(guild_id, channel_id)
     assert success is True
     assert message == "既存のゲームセットを破棄し、新しい麻雀のスコア集計を開始します。"
-    assert gameset_manager.current_gamesets[guild_id][channel_id]["status"] == "active"
-    assert gameset_manager.current_gamesets[guild_id][channel_id]["games"] == []
-    assert gameset_manager.current_gamesets[guild_id][channel_id]["members"] == {}
+    assert gameset_manager.current_gamesets[guild_id][channel_id].status == "active"
+    assert gameset_manager.current_gamesets[guild_id][channel_id].games == []
+    assert gameset_manager.current_gamesets[guild_id][channel_id].members == {}
 
 
 @pytest.mark.asyncio
@@ -80,25 +83,25 @@ async def test_record_game_logic_success(setup_teardown):
         ("player3", -10000),
         ("player4", -30000),
     ]
-    assert len(gameset_manager.current_gamesets[guild_id][channel_id]["games"]) == 1
+    assert len(gameset_manager.current_gamesets[guild_id][channel_id].games) == 1
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["games"][0]["service"]
+        gameset_manager.current_gamesets[guild_id][channel_id].games[0].service
         == "tenhou"
     )
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player1"]
+        gameset_manager.current_gamesets[guild_id][channel_id].members["player1"]
         == 25000
     )
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player2"]
+        gameset_manager.current_gamesets[guild_id][channel_id].members["player2"]
         == 15000
     )
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player3"]
+        gameset_manager.current_gamesets[guild_id][channel_id].members["player3"]
         == -10000
     )
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player4"]
+        gameset_manager.current_gamesets[guild_id][channel_id].members["player4"]
         == -30000
     )
 
@@ -119,25 +122,25 @@ async def test_record_game_logic_success(setup_teardown):
         ("player3", -5000),
         ("player4", -5000),
     ]
-    assert len(gameset_manager.current_gamesets[guild_id][channel_id]["games"]) == 2
+    assert len(gameset_manager.current_gamesets[guild_id][channel_id].games) == 2
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["games"][1]["service"]
+        gameset_manager.current_gamesets[guild_id][channel_id].games[1].service
         == "jantama"
     )
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player1"]
+        gameset_manager.current_gamesets[guild_id][channel_id].members["player1"]
         == 35000
     )
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player2"]
+        gameset_manager.current_gamesets[guild_id][channel_id].members["player2"]
         == 15000
     )
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player3"]
+        gameset_manager.current_gamesets[guild_id][channel_id].members["player3"]
         == -15000
     )
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["player4"]
+        gameset_manager.current_gamesets[guild_id][channel_id].members["player4"]
         == -35000
     )
 
@@ -157,21 +160,20 @@ async def test_record_game_logic_success(setup_teardown):
         ("playerB", 0),
         ("playerC", -30000),
     ]
-    assert len(gameset_manager.current_gamesets[guild_id][channel_id]["games"]) == 3
+    assert len(gameset_manager.current_gamesets[guild_id][channel_id].games) == 3
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["games"][2]["service"]
+        gameset_manager.current_gamesets[guild_id][channel_id].games[2].service
         == "jantama"
     )
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["playerA"]
+        gameset_manager.current_gamesets[guild_id][channel_id].members["playerA"]
         == 30000
     )
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["playerB"]
-        == 0
+        gameset_manager.current_gamesets[guild_id][channel_id].members["playerB"] == 0
     )
     assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["members"]["playerC"]
+        gameset_manager.current_gamesets[guild_id][channel_id].members["playerC"]
         == -30000
     )
 
@@ -377,21 +379,15 @@ async def test_end_gameset_logic(setup_teardown):
         ("player3", -15000),
         ("player4", -35000),
     ]
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["status"] == "inactive"
-    )
+    assert gameset_manager.current_gamesets[guild_id][channel_id].status == "inactive"
 
     # 記録されたゲームがない場合
-    gameset_manager.current_gamesets[guild_id][channel_id] = {
-        "status": "active",
-        "games": [],
-        "members": {},
-    }
+    gameset_manager.current_gamesets[guild_id][channel_id] = Gameset(
+        status="active", games=[], members={}
+    )
     success, message, _ = gameset_manager.end_gameset(guild_id, channel_id)
     assert success is True
     assert message == "ゲームセットを閉じました。記録されたゲームはありませんでした。"
-    assert (
-        gameset_manager.current_gamesets[guild_id][channel_id]["status"] == "inactive"
-    )
-    assert gameset_manager.current_gamesets[guild_id][channel_id]["games"] == []
-    assert gameset_manager.current_gamesets[guild_id][channel_id]["members"] == {}
+    assert gameset_manager.current_gamesets[guild_id][channel_id].status == "inactive"
+    assert gameset_manager.current_gamesets[guild_id][channel_id].games == []
+    assert gameset_manager.current_gamesets[guild_id][channel_id].members == {}

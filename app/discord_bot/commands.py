@@ -1,7 +1,8 @@
+from typing import Optional
+
 import discord
 from discord.ext import commands
 from discord.ui import Button, View
-from typing import Optional
 
 from app.core.gameset_manager import GamesetManager
 
@@ -57,9 +58,9 @@ async def mj_start(interaction: discord.Interaction):  # type: ignore
 
     # 既存のゲームセットがあるか確認し、確認ダイアログを表示
     if (
-        guild_id in gameset_manager.current_gamesets
+        guild_id in gameset_manager.current_gamesets.root
         and channel_id in gameset_manager.current_gamesets[guild_id]
-        and gameset_manager.current_gamesets[guild_id][channel_id]["status"] == "active"
+        and gameset_manager.current_gamesets[guild_id][channel_id].status == "active"
     ):
         view = ConfirmStartGamesetView(guild_id, channel_id)
         await interaction.response.send_message(

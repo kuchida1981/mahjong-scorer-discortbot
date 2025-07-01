@@ -1,27 +1,26 @@
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from app.core.data_manager import load_gamesets, save_gamesets
+from app.core.models import Game, Gameset, GamesetsRoot
 
 # 現在進行中のゲームセットを管理する辞書
 # { guild_id: { channel_id: { "status": "active", "games": [], "members": {} } } }
-current_gamesets = load_gamesets()
+current_gamesets: GamesetsRoot = load_gamesets()
 
 
 class GamesetManager:
     def __init__(self):
-        self.current_gamesets = load_gamesets()
+        self.current_gamesets: GamesetsRoot = load_gamesets()
 
-    def _get_gameset_data(self, guild_id: str, channel_id: str) -> Dict[str, Any]:
+    def _get_gameset_data(self, guild_id: str, channel_id: str) -> Gameset:
         if guild_id not in self.current_gamesets:
             self.current_gamesets[guild_id] = {}
         if channel_id not in self.current_gamesets[guild_id]:
-            self.current_gamesets[guild_id][channel_id] = {
-                "status": "inactive",
-                "games": [],
-                "members": {},
-            }
+            self.current_gamesets[guild_id][channel_id] = Gameset(
+                status="inactive", games=[], members={}
+            )
         return self.current_gamesets[guild_id][channel_id]
 
     def _save_current_gamesets(self) -> None:
@@ -30,37 +29,25 @@ class GamesetManager:
     def start_gameset(self, guild_id: str, channel_id: str) -> Tuple[bool, str]:
         gameset_data = self._get_gameset_data(guild_id, channel_id)
 
-        if gameset_data["status"] == "active":
+        if gameset_data.status == "active":
             # 既存のゲームセットを破棄
-            gameset_data.update(
-                {
-                    "status": "inactive",
-                    "games": [],
-                    "members": {},
-                }
-            )
+            gameset_data.status = "inactive"
+            gameset_data.games = []
+            gameset_data.members = {}
             self._save_current_gamesets()
             # 新しいゲームセットを開始
-            gameset_data.update(
-                {
-                    "status": "active",
-                    "games": [],
-                    "members": {},
-                }
-            )
+            gameset_data.status = "active"
+            gameset_data.games = []
+            gameset_data.members = {}
             self._save_current_gamesets()
             return (
                 True,
                 "既存のゲームセットを破棄し、新しい麻雀のスコア集計を開始します。",
             )
         else:
-            gameset_data.update(
-                {
-                    "status": "active",
-                    "games": [],
-                    "members": {},
-                }
-            )
+            gameset_data.status = "active"
+            gameset_data.games = []
+            gameset_data.members = {}
             self._save_current_gamesets()
             return (
                 True,
@@ -78,7 +65,7 @@ class GamesetManager:
     ) -> Tuple[bool, str, Optional[List[Tuple[str, int]]]]:
         gameset_data = self._get_gameset_data(guild_id, channel_id)
 
-        if gameset_data["status"] != "active":
+        if gameset_data.status != "active":
             return (
                 False,
                 "このチャンネルで進行中のゲームセットがありません。",
@@ -136,19 +123,19 @@ class GamesetManager:
                 None,
             )
 
-        game_data = {
-            "rule": rule,
-            "players_count": players_count,
-            "scores": parsed_scores,
-            "service": service,
-        }
-        gameset_data["games"].append(game_data)
+        game_data = Game(
+            rule=rule,
+            players_count=players_count,
+            scores=parsed_scores,
+            service=service,
+        )
+        gameset_data.games.append(game_data)
 
         # メンバーのスコアを更新
         for player_name, score in parsed_scores.items():
-            if player_name not in gameset_data["members"]:
-                gameset_data["members"][player_name] = 0
-            gameset_data["members"][player_name] += score
+            if player_name not in gameset_data.members:
+                gameset_data.members[player_name] = 0
+            gameset_data.members[player_name] += score
 
         self._save_current_gamesets()
 
@@ -163,14 +150,14 @@ class GamesetManager:
     ) -> Tuple[bool, str, Optional[List[Tuple[str, int]]]]:
         gameset_data = self._get_gameset_data(guild_id, channel_id)
 
-        if gameset_data["status"] != "active":
+        if gameset_data.status != "active":
             return (
                 False,
                 "このチャンネルで進行中のゲームセットがありません。",
                 None,
             )
 
-        total_scores = gameset_data["members"]
+        total_scores = gameset_data.members
 
         if not total_scores:
             return False, "まだゲームが記録されていません。", None
@@ -187,23 +174,19 @@ class GamesetManager:
     ) -> Tuple[bool, str, Optional[List[Tuple[str, int]]]]:
         gameset_data = self._get_gameset_data(guild_id, channel_id)
 
-        if gameset_data["status"] != "active":
+        if gameset_data.status != "active":
             return False, "このチャンネルで進行中のゲームセットがありません。", None
 
-        total_scores = gameset_data["members"]
+        total_scores = gameset_data.members
 
         # ゲーム記録がない場合、メッセージを返さずにゲームセットを閉じる
         if not total_scores:
-            gameset_data["status"] = "inactive"
+            gameset_data.status = "inactive"
             self._save_current_gamesets()
             # current_gamesetsもクリアする
-            gameset_data.update(
-                {
-                    "status": "inactive",
-                    "games": [],
-                    "members": {},
-                }
-            )
+            gameset_data.status = "inactive"
+            gameset_data.games = []
+            gameset_data.members = {}
             return (
                 True,
                 "ゲームセットを閉じました。記録されたゲームはありませんでした。",
@@ -216,7 +199,7 @@ class GamesetManager:
         )
 
         # ゲームセットを非アクティブにする
-        gameset_data["status"] = "inactive"
+        gameset_data.status = "inactive"
         self._save_current_gamesets()
 
         # ファイルをリネーム
@@ -225,14 +208,10 @@ class GamesetManager:
         if os.path.exists("gamesets.json"):  # DATA_FILEはdata_managerにあるため直接指定
             os.rename("gamesets.json", new_file_name)
             # リネーム後、gamesets.jsonを空にする
-            save_gamesets({})  # data_managerのsave_gamesetsを使用
+            save_gamesets(GamesetsRoot(root={}))  # data_managerのsave_gamesetsを使用
             # current_gamesetsもクリアする
-            gameset_data.update(
-                {
-                    "status": "inactive",
-                    "games": [],
-                    "members": {},
-                }
-            )
+            gameset_data.status = "inactive"
+            gameset_data.games = []
+            gameset_data.members = {}
 
         return True, "麻雀ゲームセット結果", sorted_scores
